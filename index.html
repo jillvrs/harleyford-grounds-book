@@ -197,6 +197,7 @@
   .chip.who-Billy { background: var(--billy-bg); color: var(--billy-fg); }
   .chip.who-Athol { background: var(--athol-bg); color: var(--athol-fg); }
   .chip.due       { background: var(--line-soft); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip.cont      { background: var(--accent-soft); color: var(--accent); }
   .chip.due.today   { background: var(--amber-soft); color: var(--amber); }
   .chip.due.overdue { background: var(--danger-soft); color: var(--danger); }
   .notepreview {
@@ -407,7 +408,7 @@
     <div>Add the first task above.</div>
   </div>
 
-  <div class="sectionhead hidden" id="ongoing-head">Ongoing duties</div>
+  <div class="sectionhead hidden" id="ongoing-head">Ongoing tasks</div>
   <ul class="list" id="list-ongoing"></ul>
 
   <ul class="list hidden" id="list-done"></ul>
@@ -485,6 +486,7 @@
       assignee: r.assignee, due: r.due, photo: r.photo,
       order: (typeof r.ord === "number") ? r.ord : 0,
       done: !!r.done, continuous: !!r.continuous,
+      doneLog: Array.isArray(r.done_log) ? r.done_log : [],
       createdAt: r.created_at, completedAt: r.completed_at
     };
   }
@@ -494,6 +496,7 @@
       if (k === "order") out.ord = patch[k];
       else if (k === "completedAt") out.completed_at = patch[k];
       else if (k === "createdAt") out.created_at = patch[k];
+      else if (k === "doneLog") out.done_log = patch[k];
       else out[k] = patch[k];
     }
     return out;
@@ -640,22 +643,17 @@
 
     var row = el("div", "row");
 
-    if (!isDone && t.continuous) {
-      var cyc = el("div", "cycle");
-      cyc.title = "Ongoing duty";
-      cyc.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1M20.5 2.5v4h-4"/></svg>';
-      row.appendChild(cyc);
-    } else {
-      var check = el("button", "check");
-      check.setAttribute("aria-label", isDone ? "Mark as not done" : "Mark as done");
-      check.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>';
-      check.addEventListener("click", function (e) {
-        e.stopPropagation();
-        if (isDone) restoreTask(t.id);
-        else completeTask(t.id, check);
-      });
-      row.appendChild(check);
-    }
+    var check = el("button", "check");
+    check.setAttribute("aria-label",
+      isDone ? "Mark as not done" : (t.continuous ? "Log as done today" : "Mark as done"));
+    check.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>';
+    check.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (isDone) restoreTask(t.id);
+      else if (t.continuous) logContinuous(t.id, check);
+      else completeTask(t.id, check);
+    });
+    row.appendChild(check);
 
     var body = el("div", "body");
     body.appendChild(el("div", "title", t.title || "Untitled task"));
@@ -663,6 +661,9 @@
     var meta = el("div", "meta");
     if (t.assignee && PEOPLE.indexOf(t.assignee) >= 0) {
       meta.appendChild(el("span", "chip who-" + t.assignee, t.assignee));
+    }
+    if (!isDone && t.continuous) {
+      meta.appendChild(el("span", "chip cont", "Continuous"));
     }
     if (!isDone && !t.continuous && t.due) {
       var cls = "chip due";
@@ -674,6 +675,9 @@
     if (meta.childNodes.length) body.appendChild(meta);
 
     if (t.note) body.appendChild(el("div", "notepreview", t.note));
+    if (!isDone && t.continuous && t.doneLog && t.doneLog.length) {
+      body.appendChild(el("div", "doneinfo", "Last done " + fmtDone(t.doneLog[t.doneLog.length - 1])));
+    }
     if (isDone && t.completedAt) body.appendChild(el("div", "doneinfo", "Completed " + fmtDone(t.completedAt)));
 
     body.addEventListener("click", function () {
@@ -754,7 +758,7 @@
       var fType = el("div");
       fType.appendChild(el("label", null, "Type"));
       var tseg = el("div", "seg");
-      [["One-off job", false], ["Ongoing duty", true]].forEach(function (opt) {
+      [["One-off task", false], ["Ongoing task", true]].forEach(function (opt) {
         var b = el("button", null, opt[0]);
         b.type = "button";
         b.setAttribute("aria-pressed", t.continuous === opt[1]);
@@ -770,6 +774,18 @@
       });
       fType.appendChild(tseg);
       ed.appendChild(fType);
+
+      if (t.continuous && t.doneLog && t.doneLog.length) {
+        var fLog = el("div");
+        fLog.appendChild(el("label", null, "Done log · " + t.doneLog.length + (t.doneLog.length === 1 ? " time" : " times")));
+        var lg = el("div", "busy");
+        lg.textContent = t.doneLog.slice(-6).reverse().map(function (d) {
+          var dt = new Date(d);
+          return isNaN(dt) ? "" : dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+        }).filter(Boolean).join("  ·  ");
+        fLog.appendChild(lg);
+        ed.appendChild(fLog);
+      }
     }
 
     var fDue = el("div");
@@ -877,6 +893,57 @@
 
   var PARSE_HINT = /(carl|billy|athol|\bby\b|\bbefore\b|\bafter\b|end of|target|\bnext\b|tomorrow|\btoday\b|\bweek\b|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|\bmay\b|june|july|august|september|october|november|december|christmas|easter)/i;
 
+  var MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+  // "24 december", "dec 24", "24 Dec 2026", "2026-12-24" -> ISO date (next occurrence if no year)
+  function parseLooseDate(s) {
+    s = String(s).toLowerCase().trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    var day = null, mon = -1, year = null;
+    var dm = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+    if (dm) day = parseInt(dm[1], 10);
+    var ym = s.match(/\b(20\d{2})\b/);
+    if (ym) year = parseInt(ym[1], 10);
+    for (var i = 0; i < 12; i++) {
+      if (s.indexOf(MONTHS[i].slice(0, 3)) >= 0) { mon = i; break; }
+    }
+    if (mon < 0 || !day || day < 1 || day > 31) return null;
+    if (!year) {
+      var now = new Date();
+      year = now.getFullYear();
+      if (new Date(year, mon, day) < new Date(now.getFullYear(), now.getMonth(), now.getDate())) year++;
+    }
+    var mm = String(mon + 1); if (mm.length < 2) mm = "0" + mm;
+    var dd = String(day); if (dd.length < 2) dd = "0" + dd;
+    return year + "-" + mm + "-" + dd;
+  }
+
+  // Basic "title - date - person" splitter for when Claude isn't reachable
+  function localParse(text) {
+    var parts = text.split(/\s+[-–—]\s+/);
+    if (parts.length < 2) return null;
+    var title = parts[0].trim();
+    if (!title) return null;
+    var assignee = null, due = null, noteBits = [];
+    for (var i = 1; i < parts.length; i++) {
+      var seg = parts[i].trim();
+      if (!seg) continue;
+      var who = null;
+      for (var p = 0; p < PEOPLE.length; p++) {
+        if (seg.toLowerCase() === PEOPLE[p].toLowerCase()) who = PEOPLE[p];
+      }
+      var d = parseLooseDate(seg);
+      if (who && !assignee) assignee = who;
+      else if (d && !due) due = d;
+      else noteBits.push(seg);
+    }
+    if (!assignee && !due) return null;
+    return {
+      title: title.slice(0, 300), note: noteBits.join(". ").slice(0, 2000),
+      assignee: assignee, due: due, continuous: false
+    };
+  }
+
   function smartAdd(text, force) {
     text = text.trim();
     if (!text) return;
@@ -925,9 +992,20 @@
     }).catch(function (e) {
       console.error(e);
       setStatus("");
-      addRaw(text);
+      var lp = localParse(text);
+      if (lp) {
+        var t2 = Object.assign({ photo: null, order: maxOrder() + 1, done: false }, lp);
+        tasks.push(Object.assign({ id: "tmp-" + Date.now(), createdAt: null, completedAt: null, doneLog: [] }, t2));
+        render();
+        createTask(t2).then(loadTasks).catch(function () {
+          tempNotice("Couldn’t add the task — check your connection and try again.", 6000);
+          return loadTasks();
+        });
+      } else {
+        addRaw(text);
+      }
       if (e && e.error === "no_key") {
-        tempNotice("Smart sorting isn’t switched on yet (the Anthropic API key hasn’t been added) — added as typed.", 8000);
+        tempNotice("Claude sorting isn’t switched on yet (the Anthropic API key hasn’t been added in Supabase)" + (lp ? " — sorted with basic rules instead." : " — added as typed."), 8000);
       }
     });
   }
@@ -944,6 +1022,22 @@
   function restoreTask(id) {
     patchTask(id, { done: false, completedAt: null, order: maxOrder() + 1 });
     render();
+  }
+
+  function logContinuous(id, checkBtn) {
+    var t = null;
+    for (var i = 0; i < tasks.length; i++) if (tasks[i].id === id) t = tasks[i];
+    if (!t) return;
+    var log = (t.doneLog || []).slice();
+    log.push(new Date().toISOString());
+    if (log.length > 200) log = log.slice(-200);
+    if (checkBtn) {
+      checkBtn.classList.add("on");
+      setTimeout(function () { checkBtn.classList.remove("on"); }, 900);
+    }
+    patchTask(id, { doneLog: log });
+    tempNotice("Logged — " + (t.title || "task") + " done today.", 3500);
+    setTimeout(function () { scheduleRender(); }, 950);
   }
 
   // ---------- photos ----------
