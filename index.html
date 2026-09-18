@@ -481,9 +481,11 @@
   }
 
   function fromRow(r) {
+    var who = Array.isArray(r.assignees) ? r.assignees : (r.assignee ? [r.assignee] : []);
     return {
       id: r.id, title: r.title, note: r.note || "",
-      assignee: r.assignee, due: r.due, photo: r.photo,
+      assignees: PEOPLE.filter(function (p) { return who.indexOf(p) >= 0; }),
+      due: r.due, photo: r.photo,
       order: (typeof r.ord === "number") ? r.ord : 0,
       done: !!r.done, continuous: !!r.continuous,
       doneLog: Array.isArray(r.done_log) ? r.done_log : [],
@@ -659,9 +661,9 @@
     body.appendChild(el("div", "title", t.title || "Untitled task"));
 
     var meta = el("div", "meta");
-    if (t.assignee && PEOPLE.indexOf(t.assignee) >= 0) {
-      meta.appendChild(el("span", "chip who-" + t.assignee, t.assignee));
-    }
+    (t.assignees || []).forEach(function (p) {
+      if (PEOPLE.indexOf(p) >= 0) meta.appendChild(el("span", "chip who-" + p, p));
+    });
     if (!isDone && t.continuous) {
       meta.appendChild(el("span", "chip cont", "Continuous"));
     }
@@ -739,14 +741,19 @@
     ed.appendChild(fNote);
 
     var fWho = el("div");
-    fWho.appendChild(el("label", null, "Who’s on it"));
+    fWho.appendChild(el("label", null, "Who’s on it (tap several)"));
     var seg = el("div", "seg");
     PEOPLE.forEach(function (p) {
       var b = el("button", null, p);
       b.type = "button";
-      b.setAttribute("aria-pressed", t.assignee === p);
+      b.setAttribute("aria-pressed", (t.assignees || []).indexOf(p) >= 0);
       b.addEventListener("click", function () {
-        patchTask(t.id, { assignee: t.assignee === p ? null : p });
+        var cur = (t.assignees || []).slice();
+        var i = cur.indexOf(p);
+        if (i >= 0) cur.splice(i, 1); else cur.push(p);
+        // keep a stable Carl/Billy/Athol order on the chips
+        cur = PEOPLE.filter(function (q) { return cur.indexOf(q) >= 0; });
+        patchTask(t.id, { assignees: cur });
         render();
       });
       seg.appendChild(b);
@@ -878,7 +885,7 @@
 
   function addRaw(text) {
     var data = {
-      title: text.slice(0, 300), note: "", assignee: null, due: null, photo: null,
+      title: text.slice(0, 300), note: "", assignees: [], due: null, photo: null,
       order: maxOrder() + 1, done: false, continuous: false
     };
     // optimistic placeholder until the reload brings the real row
@@ -924,23 +931,34 @@
     if (parts.length < 2) return null;
     var title = parts[0].trim();
     if (!title) return null;
-    var assignee = null, due = null, noteBits = [];
+    var assignees = [], due = null, noteBits = [];
+    function personFor(word) {
+      for (var p = 0; p < PEOPLE.length; p++) {
+        if (word.toLowerCase() === PEOPLE[p].toLowerCase()) return PEOPLE[p];
+      }
+      return null;
+    }
     for (var i = 1; i < parts.length; i++) {
       var seg = parts[i].trim();
       if (!seg) continue;
-      var who = null;
-      for (var p = 0; p < PEOPLE.length; p++) {
-        if (seg.toLowerCase() === PEOPLE[p].toLowerCase()) who = PEOPLE[p];
-      }
+      // "Carl", "Carl and Billy", "Carl & Billy", "Carl, Billy"
+      var subs = seg.split(/\s*(?:,|&|\+|\band\b)\s*/i).filter(function (s) { return s; });
+      var people = subs.map(personFor);
+      var allPeople = subs.length > 0 && people.indexOf(null) < 0;
       var d = parseLooseDate(seg);
-      if (who && !assignee) assignee = who;
-      else if (d && !due) due = d;
-      else noteBits.push(seg);
+      if (allPeople) {
+        people.forEach(function (w) { if (assignees.indexOf(w) < 0) assignees.push(w); });
+      } else if (d && !due) {
+        due = d;
+      } else {
+        noteBits.push(seg);
+      }
     }
-    if (!assignee && !due) return null;
+    if (!assignees.length && !due) return null;
     return {
       title: title.slice(0, 300), note: noteBits.join(". ").slice(0, 2000),
-      assignee: assignee, due: due, continuous: false
+      assignees: PEOPLE.filter(function (q) { return assignees.indexOf(q) >= 0; }),
+      due: due, continuous: false
     };
   }
 
@@ -963,10 +981,14 @@
       var items = (out && Array.isArray(out.tasks)) ? out.tasks : [];
       items = items.slice(0, 20).map(function (it) {
         var cont = it.continuous === true;
+        var raw = Array.isArray(it.assignees) ? it.assignees : (it.assignee ? [it.assignee] : []);
+        raw = raw.map(function (w) { return String(w); });
         return {
           title: String(it.title || "").slice(0, 300).trim() || "Untitled task",
           note: String(it.note || "").slice(0, 2000).trim(),
-          assignee: PEOPLE.indexOf(it.assignee) >= 0 ? it.assignee : null,
+          assignees: PEOPLE.filter(function (p) {
+            return raw.some(function (w) { return w.toLowerCase() === p.toLowerCase(); });
+          }),
           due: (!cont && /^\d{4}-\d{2}-\d{2}$/.test(String(it.due || ""))) ? it.due : null,
           continuous: cont
         };
@@ -980,7 +1002,7 @@
         var ord = it.continuous ? (baseOng + (++nOng)) : (base + (++nOne));
         chain = chain.then(function () {
           return createTask({
-            title: it.title, note: it.note, assignee: it.assignee, due: it.due,
+            title: it.title, note: it.note, assignees: it.assignees, due: it.due,
             photo: null, order: ord, done: false, continuous: it.continuous
           });
         });
