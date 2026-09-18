@@ -532,8 +532,16 @@
   }
 
   function activeTasks() {
+    // Due date rules the order (earliest first, undated last);
+    // drag order breaks ties within the same date group.
     return tasks.filter(function (t) { return !t.done; })
-      .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+      .sort(function (a, b) {
+        var ad = a.due || "", bd = b.due || "";
+        if (ad && bd) { if (ad < bd) return -1; if (ad > bd) return 1; }
+        else if (ad) return -1;
+        else if (bd) return 1;
+        return (a.order || 0) - (b.order || 0);
+      });
   }
   function doneTasks() {
     return tasks.filter(function (t) { return t.done; })
