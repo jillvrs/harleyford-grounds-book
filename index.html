@@ -504,14 +504,14 @@
       scheduleRender();
     }).catch(function (e) {
       console.error(e);
-      if (!firstLoad) notice("Canâ€™t reach the list â€” check your signal and pull to refresh.");
+      if (!firstLoad) notice("Can’t reach the list — check your signal and pull to refresh.");
     });
   }
 
   function queueWrite(id, fn) {
     var chain = (writeQueues[id] || Promise.resolve()).then(fn).catch(function (e) {
       console.error("write failed", e);
-      tempNotice("A change could not be saved â€” check your connection and try again.", 6000);
+      tempNotice("A change could not be saved — check your connection and try again.", 6000);
       return loadTasks();
     });
     writeQueues[id] = chain;
@@ -624,7 +624,7 @@
       var today = todayStr();
       if (t.due < today) cls += " overdue";
       else if (t.due === today) cls += " today";
-      meta.appendChild(el("span", cls, (t.due < today ? "Overdue Â· " : "") + fmtDue(t.due)));
+      meta.appendChild(el("span", cls, (t.due < today ? "Overdue · " : "") + fmtDue(t.due)));
     }
     if (meta.childNodes.length) body.appendChild(meta);
 
@@ -680,7 +680,7 @@
     fNote.appendChild(el("label", null, "Details / comment"));
     var inNote = el("textarea");
     inNote.value = t.note || ""; inNote.maxLength = 2000;
-    inNote.placeholder = "Anything the person doing it should knowâ€¦";
+    inNote.placeholder = "Anything the person doing it should know…";
     inNote.id = "ed-note-" + t.id;
     inNote.addEventListener("change", function () {
       if (inNote.value !== (t.note || "")) patchTask(t.id, { note: inNote.value });
@@ -690,7 +690,7 @@
     ed.appendChild(fNote);
 
     var fWho = el("div");
-    fWho.appendChild(el("label", null, "Whoâ€™s on it"));
+    fWho.appendChild(el("label", null, "Who’s on it"));
     var seg = el("div", "seg");
     PEOPLE.forEach(function (p) {
       var b = el("button", null, p);
@@ -764,7 +764,7 @@
     var del = el("button", "btn danger", "Delete task");
     del.type = "button";
     del.addEventListener("click", function () {
-      if (!confirm("Delete â€œ" + (t.title || "this task") + "â€ for everyone? This canâ€™t be undone.")) return;
+      if (!confirm("Delete “" + (t.title || "this task") + "” for everyone? This can’t be undone.")) return;
       var old = t.photo;
       tasks = tasks.filter(function (x) { return x.id !== t.id; });
       expandedId = null;
@@ -803,7 +803,7 @@
     render();
     return createTask(data).then(loadTasks).catch(function (e) {
       console.error(e);
-      tempNotice("Couldnâ€™t add the task â€” check your connection and try again.", 6000);
+      tempNotice("Couldn’t add the task — check your connection and try again.", 6000);
       return loadTasks();
     });
   }
@@ -815,7 +815,7 @@
     if (!text) return;
     if (!force && !PARSE_HINT.test(text) && text.length <= 60) { addRaw(text); return; }
 
-    setStatus("Sorting with Claudeâ€¦");
+    setStatus("Sorting with Claude…");
     fetch(SUPA + "/functions/v1/grounds-parse", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-grounds-code": CODE || "" },
@@ -856,7 +856,7 @@
       setStatus("");
       addRaw(text);
       if (e && e.error === "no_key") {
-        tempNotice("Smart sorting isnâ€™t switched on yet (the Anthropic API key hasnâ€™t been added) â€” added as typed.", 8000);
+        tempNotice("Smart sorting isn’t switched on yet (the Anthropic API key hasn’t been added) — added as typed.", 8000);
       }
     });
   }
@@ -903,7 +903,7 @@
 
   function uploadPhoto(t, fileBlob, btn, status) {
     btn.disabled = true;
-    status.textContent = "Uploadingâ€¦";
+    status.textContent = "Uploading…";
     var name = t.id + "-" + Date.now() + ".jpg";
     compressImage(fileBlob)
       .catch(function () { return fileBlob; })
@@ -926,7 +926,7 @@
       .catch(function (e) {
         console.error(e);
         btn.disabled = false;
-        status.textContent = "Upload failed â€” try again.";
+        status.textContent = "Upload failed — try again.";
       });
   }
 
@@ -1066,8 +1066,8 @@
 
   function startListening() {
     var title = el("h2");
-    title.innerHTML = '<span class="pulse"></span>Dictatingâ€¦';
-    var hint = el("p", "hint", "Say the jobs in one go â€” e.g. â€œBilly to fix the fence by the boathouse by Friday, and clear the leaves on the front drive.â€ Claude will split it into tasks with the person and date filled in.");
+    title.innerHTML = '<span class="pulse"></span>Dictating…';
+    var hint = el("p", "hint", "Say the jobs in one go — e.g. “Billy to fix the fence by the boathouse by Friday, and clear the leaves on the front drive.” Claude will split it into tasks with the person and date filled in.");
     var box = el("div", "transcript");
     var finalText = "";
 
@@ -1101,7 +1101,7 @@
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed" || ev.error === "audio-capture") {
         openTypeFallback(finalText.trim());
       } else {
-        hint.textContent = "Didnâ€™t catch that â€” try again, or tap Cancel and type it instead.";
+        hint.textContent = "Didn’t catch that — try again, or tap Cancel and type it instead.";
       }
     };
     try { recog.start(); } catch (e) { recog = null; openTypeFallback(""); }
@@ -1113,7 +1113,7 @@
     var box = el("textarea", "dictate-box");
     box.id = "dictate-box";
     box.value = prefill || "";
-    box.placeholder = "e.g. Billy to fix the fence by the boathouse by Friday, and clear the leaves on the front driveâ€¦";
+    box.placeholder = "e.g. Billy to fix the fence by the boathouse by Friday, and clear the leaves on the front drive…";
     var actions = sheetActions([
       { label: "Cancel", onClick: closeSheet },
       { label: "Add tasks", primary: true, onClick: function () {
@@ -1160,16 +1160,16 @@
     e.preventDefault();
     var code = $("gate-input").value.trim().toLowerCase();
     if (!code) return;
-    $("gate-err").textContent = "Checkingâ€¦";
+    $("gate-err").textContent = "Checking…";
     verifyCode(code).then(function (ok) {
       if (ok === true) {
         CODE = code;
         try { localStorage.setItem("groundsCode", code); } catch (err) {}
         boot();
       } else if (ok === false) {
-        $("gate-err").textContent = "Thatâ€™s not the code â€” ask Carl or check the note from the office.";
+        $("gate-err").textContent = "That’s not the code — ask Carl or check the note from the office.";
       } else {
-        $("gate-err").textContent = "Canâ€™t reach the server â€” check your signal and try again.";
+        $("gate-err").textContent = "Can’t reach the server — check your signal and try again.";
       }
     });
   });
@@ -1181,14 +1181,20 @@
   $("tab-todo").addEventListener("click", function () { view = "todo"; render(); });
   $("tab-done").addEventListener("click", function () { view = "done"; render(); });
 
-  $("addbar").addEventListener("submit", function (e) {
-    e.preventDefault();
+  function addFromInput() {
     var input = $("add-input");
     var v = input.value.trim();
     if (!v) return;
     smartAdd(v, false);
     input.value = "";
     input.focus();
+  }
+  $("addbar").addEventListener("submit", function (e) {
+    e.preventDefault();
+    addFromInput();
+  });
+  $("add-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); addFromInput(); }
   });
 
   $("mic-btn").addEventListener("click", startDictation);
@@ -1199,7 +1205,7 @@
   } else {
     verifyCode(CODE).then(function (ok) {
       if (ok === false) { CODE = null; try { localStorage.removeItem("groundsCode"); } catch (e) {} showGate(); }
-      else boot(); // true, or unreachable â€” try anyway
+      else boot(); // true, or unreachable — try anyway
     });
   }
 })();
