@@ -258,6 +258,20 @@
 
   .doneinfo { font-size: 13px; color: var(--faint); margin-top: 3px; font-variant-numeric: tabular-nums; }
 
+  .sectionhead {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--muted); font-size: 13px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase;
+    margin: 26px 2px 12px;
+  }
+  .sectionhead::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  .cycle {
+    flex: none; width: 28px; height: 28px; margin-top: 2px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+
   .empty {
     text-align: center; color: var(--muted);
     padding: 48px 20px; border: 1.5px dashed var(--line); border-radius: 14px;
@@ -393,6 +407,9 @@
     <div>Add the first task above.</div>
   </div>
 
+  <div class="sectionhead hidden" id="ongoing-head">Ongoing duties</div>
+  <ul class="list" id="list-ongoing"></ul>
+
   <ul class="list hidden" id="list-done"></ul>
   <div class="empty hidden" id="empty-done">
     <div class="big">Nothing completed yet</div>
@@ -422,7 +439,7 @@
   var pollTimer = null;
 
   var $ = function (id) { return document.getElementById(id); };
-  var listTodo = $("list-todo"), listDone = $("list-done");
+  var listTodo = $("list-todo"), listDone = $("list-done"), listOngoing = $("list-ongoing");
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -467,7 +484,8 @@
       id: r.id, title: r.title, note: r.note || "",
       assignee: r.assignee, due: r.due, photo: r.photo,
       order: (typeof r.ord === "number") ? r.ord : 0,
-      done: !!r.done, createdAt: r.created_at, completedAt: r.completed_at
+      done: !!r.done, continuous: !!r.continuous,
+      createdAt: r.created_at, completedAt: r.completed_at
     };
   }
   function toDb(patch) {
@@ -534,7 +552,7 @@
   function activeTasks() {
     // Due date rules the order (earliest first, undated last);
     // drag order breaks ties within the same date group.
-    return tasks.filter(function (t) { return !t.done; })
+    return tasks.filter(function (t) { return !t.done && !t.continuous; })
       .sort(function (a, b) {
         var ad = a.due || "", bd = b.due || "";
         if (ad && bd) { if (ad < bd) return -1; if (ad > bd) return 1; }
@@ -543,13 +561,22 @@
         return (a.order || 0) - (b.order || 0);
       });
   }
+  function ongoingTasks() {
+    return tasks.filter(function (t) { return !t.done && t.continuous; })
+      .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+  }
+  function maxOrderOngoing() {
+    var m = 0;
+    ongoingTasks().forEach(function (t) { if ((t.order || 0) > m) m = t.order; });
+    return m;
+  }
   function doneTasks() {
     return tasks.filter(function (t) { return t.done; })
       .sort(function (a, b) { return String(b.completedAt || "").localeCompare(String(a.completedAt || "")); });
   }
   function maxOrder() {
     var m = 0;
-    tasks.forEach(function (t) { if (!t.done && typeof t.order === "number" && t.order > m) m = t.order; });
+    tasks.forEach(function (t) { if (!t.done && !t.continuous && typeof t.order === "number" && t.order > m) m = t.order; });
     return m;
   }
 
@@ -586,9 +613,9 @@
 
   function render() {
     renderPending = false;
-    var act = activeTasks(), done = doneTasks();
+    var act = activeTasks(), ong = ongoingTasks(), done = doneTasks();
 
-    $("count-todo").textContent = act.length;
+    $("count-todo").textContent = act.length + ong.length;
     $("count-done").textContent = done.length;
     $("tab-todo").setAttribute("aria-selected", view === "todo");
     $("tab-done").setAttribute("aria-selected", view === "done");
@@ -596,11 +623,14 @@
     $("addbar").classList.toggle("hidden", view !== "todo");
     $("addstatus").classList.toggle("hidden", view !== "todo");
     listTodo.classList.toggle("hidden", view !== "todo");
+    listOngoing.classList.toggle("hidden", view !== "todo");
+    $("ongoing-head").classList.toggle("hidden", !(view === "todo" && ong.length > 0));
     listDone.classList.toggle("hidden", view !== "done");
-    $("empty-todo").classList.toggle("hidden", !(view === "todo" && firstLoad && act.length === 0));
+    $("empty-todo").classList.toggle("hidden", !(view === "todo" && firstLoad && act.length === 0 && ong.length === 0));
     $("empty-done").classList.toggle("hidden", !(view === "done" && done.length === 0));
 
     listTodo.replaceChildren.apply(listTodo, act.map(function (t) { return buildCard(t, false); }));
+    listOngoing.replaceChildren.apply(listOngoing, ong.map(function (t) { return buildCard(t, false); }));
     listDone.replaceChildren.apply(listDone, done.map(function (t) { return buildCard(t, true); }));
   }
 
@@ -610,15 +640,22 @@
 
     var row = el("div", "row");
 
-    var check = el("button", "check");
-    check.setAttribute("aria-label", isDone ? "Mark as not done" : "Mark as done");
-    check.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>';
-    check.addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (isDone) restoreTask(t.id);
-      else completeTask(t.id, check);
-    });
-    row.appendChild(check);
+    if (!isDone && t.continuous) {
+      var cyc = el("div", "cycle");
+      cyc.title = "Ongoing duty";
+      cyc.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1M20.5 2.5v4h-4"/></svg>';
+      row.appendChild(cyc);
+    } else {
+      var check = el("button", "check");
+      check.setAttribute("aria-label", isDone ? "Mark as not done" : "Mark as done");
+      check.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>';
+      check.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (isDone) restoreTask(t.id);
+        else completeTask(t.id, check);
+      });
+      row.appendChild(check);
+    }
 
     var body = el("div", "body");
     body.appendChild(el("div", "title", t.title || "Untitled task"));
@@ -627,7 +664,7 @@
     if (t.assignee && PEOPLE.indexOf(t.assignee) >= 0) {
       meta.appendChild(el("span", "chip who-" + t.assignee, t.assignee));
     }
-    if (!isDone && t.due) {
+    if (!isDone && !t.continuous && t.due) {
       var cls = "chip due";
       var today = todayStr();
       if (t.due < today) cls += " overdue";
@@ -713,6 +750,28 @@
     fWho.appendChild(seg);
     ed.appendChild(fWho);
 
+    if (!isDone) {
+      var fType = el("div");
+      fType.appendChild(el("label", null, "Type"));
+      var tseg = el("div", "seg");
+      [["One-off job", false], ["Ongoing duty", true]].forEach(function (opt) {
+        var b = el("button", null, opt[0]);
+        b.type = "button";
+        b.setAttribute("aria-pressed", t.continuous === opt[1]);
+        b.addEventListener("click", function () {
+          if (t.continuous === opt[1]) return;
+          var patch = { continuous: opt[1] };
+          if (opt[1]) { patch.due = null; patch.order = maxOrderOngoing() + 1; }
+          else { patch.order = maxOrder() + 1; }
+          patchTask(t.id, patch);
+          render();
+        });
+        tseg.appendChild(b);
+      });
+      fType.appendChild(tseg);
+      ed.appendChild(fType);
+    }
+
     var fDue = el("div");
     fDue.appendChild(el("label", null, "Target date"));
     var dueRow = el("div", "photo-block");
@@ -731,7 +790,7 @@
       dueRow.appendChild(clr);
     }
     fDue.appendChild(dueRow);
-    ed.appendChild(fDue);
+    if (!t.continuous) ed.appendChild(fDue);
 
     var fPhoto = el("div");
     fPhoto.appendChild(el("label", null, "Photo of the spot"));
@@ -804,7 +863,7 @@
   function addRaw(text) {
     var data = {
       title: text.slice(0, 300), note: "", assignee: null, due: null, photo: null,
-      order: maxOrder() + 1, done: false
+      order: maxOrder() + 1, done: false, continuous: false
     };
     // optimistic placeholder until the reload brings the real row
     tasks.push(Object.assign({ id: "tmp-" + Date.now(), createdAt: null, completedAt: null }, data));
@@ -836,22 +895,26 @@
     }).then(function (out) {
       var items = (out && Array.isArray(out.tasks)) ? out.tasks : [];
       items = items.slice(0, 20).map(function (it) {
+        var cont = it.continuous === true;
         return {
           title: String(it.title || "").slice(0, 300).trim() || "Untitled task",
           note: String(it.note || "").slice(0, 2000).trim(),
           assignee: PEOPLE.indexOf(it.assignee) >= 0 ? it.assignee : null,
-          due: /^\d{4}-\d{2}-\d{2}$/.test(String(it.due || "")) ? it.due : null
+          due: (!cont && /^\d{4}-\d{2}-\d{2}$/.test(String(it.due || ""))) ? it.due : null,
+          continuous: cont
         };
       }).filter(function (it) { return it.title !== "Untitled task" || it.note; });
       if (!items.length) throw { error: "empty" };
 
-      var base = maxOrder();
+      var base = maxOrder(), baseOng = maxOrderOngoing();
+      var nOne = 0, nOng = 0;
       var chain = Promise.resolve();
-      items.forEach(function (it, i) {
+      items.forEach(function (it) {
+        var ord = it.continuous ? (baseOng + (++nOng)) : (base + (++nOne));
         chain = chain.then(function () {
           return createTask({
             title: it.title, note: it.note, assignee: it.assignee, due: it.due,
-            photo: null, order: base + i + 1, done: false
+            photo: null, order: ord, done: false, continuous: it.continuous
           });
         });
       });
@@ -962,7 +1025,8 @@
     var handle = e.currentTarget;
     try { handle.setPointerCapture(e.pointerId); } catch (err) {}
 
-    var items = [].slice.call(listTodo.children);
+    var list = card.parentElement;
+    var items = [].slice.call(list.children);
     var fromIdx = items.indexOf(card);
     if (fromIdx < 0) return;
 
@@ -1004,7 +1068,7 @@
       card.classList.remove("dragging");
       items.forEach(function (n) { n.classList.remove("shifting"); n.style.transform = ""; });
       card.style.transform = "";
-      if (toIdx !== fromIdx) applyReorder(fromIdx, toIdx);
+      if (toIdx !== fromIdx) applyReorder(fromIdx, toIdx, list === listOngoing);
     }
 
     handle.addEventListener("pointermove", onMove);
@@ -1012,8 +1076,8 @@
     handle.addEventListener("pointercancel", onUp);
   }
 
-  function applyReorder(fromIdx, toIdx) {
-    var act = activeTasks();
+  function applyReorder(fromIdx, toIdx, isOngoing) {
+    var act = isOngoing ? ongoingTasks() : activeTasks();
     var moved = act[fromIdx];
     if (!moved) return;
     act.splice(fromIdx, 1);
