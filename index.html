@@ -30,6 +30,7 @@
     --carl-fg: #35573B; --carl-bg: #DFE8DC;
     --billy-fg: #3A5578; --billy-bg: #DEE5EE;
     --athol-fg: #7A4E22; --athol-bg: #EEE3D3;
+    --han-fg: #63447A; --han-bg: #E9E0EF;
     --shadow: 0 1px 2px rgba(40, 44, 30, .08), 0 4px 14px rgba(40, 44, 30, .07);
     --shadow-lift: 0 6px 14px rgba(40, 44, 30, .18), 0 14px 34px rgba(40, 44, 30, .18);
   }
@@ -53,6 +54,7 @@
       --carl-fg: #A9CBA9; --carl-bg: #2B3B2C;
       --billy-fg: #A6C0DF; --billy-bg: #27313F;
       --athol-fg: #DCB183; --athol-bg: #3D2F1E;
+      --han-fg: #C9AADB; --han-bg: #362B40;
       --shadow: 0 1px 2px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.3);
       --shadow-lift: 0 6px 14px rgba(0,0,0,.5), 0 14px 34px rgba(0,0,0,.5);
     }
@@ -196,6 +198,7 @@
   .chip.who-Carl  { background: var(--carl-bg);  color: var(--carl-fg); }
   .chip.who-Billy { background: var(--billy-bg); color: var(--billy-fg); }
   .chip.who-Athol { background: var(--athol-bg); color: var(--athol-fg); }
+  .chip.who-Han   { background: var(--han-bg);   color: var(--han-fg); }
   .chip.due       { background: var(--line-soft); color: var(--muted); font-variant-numeric: tabular-nums; }
   .chip.cont      { background: var(--accent-soft); color: var(--accent); }
   .chip.due.today   { background: var(--amber-soft); color: var(--amber); }
@@ -417,7 +420,7 @@
     <div>Ticked-off tasks will appear here.</div>
   </div>
 
-  <footer>Grounds task list &middot; Carl &middot; Billy &middot; Athol</footer>
+  <footer>Grounds task list &middot; Carl &middot; Billy &middot; Athol &middot; Han</footer>
 </div>
 
 <script>
@@ -426,7 +429,7 @@
 
   var SUPA = "https://cvfwwyscremgydmcjsxh.supabase.co";
   var KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Znd3eXNjcmVtZ3lkbWNqc3hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NzM1MDcsImV4cCI6MjEwMjU0OTUwN30.HA7w19LjGTAYP6MmuppQAOD55H8COiWKDi_5l8n5fCs";
-  var PEOPLE = ["Carl", "Billy", "Athol"];
+  var PEOPLE = ["Carl", "Billy", "Athol", "Han"];
 
   var CODE = null;
   try { CODE = localStorage.getItem("groundsCode"); } catch (e) {}
@@ -993,6 +996,20 @@
           continuous: cont
         };
       }).filter(function (it) { return it.title !== "Untitled task" || it.note; });
+      // One submission is always ONE task: if Claude split it anyway, merge back
+      if (items.length > 1) {
+        var first = items[0];
+        var extraNotes = [];
+        for (var k = 1; k < items.length; k++) {
+          var ex = items[k];
+          extraNotes.push(ex.title + (ex.note ? " — " + ex.note : ""));
+          ex.assignees.forEach(function (p) { if (first.assignees.indexOf(p) < 0) first.assignees.push(p); });
+          if (ex.due && (!first.due || ex.due < first.due)) first.due = ex.due;
+        }
+        first.assignees = PEOPLE.filter(function (q) { return first.assignees.indexOf(q) >= 0; });
+        first.note = (first.note ? first.note + "\n" : "") + extraNotes.join("\n");
+        items = [first];
+      }
       if (!items.length) throw { error: "empty" };
 
       var base = maxOrder(), baseOng = maxOrderOngoing();
@@ -1255,7 +1272,7 @@
   function startListening() {
     var title = el("h2");
     title.innerHTML = '<span class="pulse"></span>Dictating…';
-    var hint = el("p", "hint", "Say the jobs in one go — e.g. “Billy to fix the fence by the boathouse by Friday, and clear the leaves on the front drive.” Claude will split it into tasks with the person and date filled in.");
+    var hint = el("p", "hint", "Describe the job — e.g. “Billy to fix the fence by the boathouse by Friday.” Claude fills in the person, date and details as one task.");
     var box = el("div", "transcript");
     var finalText = "";
 
@@ -1297,7 +1314,7 @@
 
   function openTypeFallback(prefill) {
     var title = el("h2", null, "Dictate your tasks");
-    var hint = el("p", "hint", "Tap the box, then use the mic key on your keyboard to dictate. Claude will sort it into separate tasks with the person and date filled in.");
+    var hint = el("p", "hint", "Tap the box, then use the mic key on your keyboard to dictate. Claude fills in the person, date and details as one task.");
     var box = el("textarea", "dictate-box");
     box.id = "dictate-box";
     box.value = prefill || "";
